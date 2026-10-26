@@ -37,5 +37,15 @@ const appointmentSchema = new mongoose.Schema(
   }
 );
 
+// Compound partial unique index: enforces slot uniqueness only for active (pending/approved) bookings.
+// Rejected appointments automatically release the slot for re-booking while preserving audit history.
+appointmentSchema.index(
+  { doctorId: 1, date: 1, time: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { status: { $in: ["pending", "approved"] } },
+  }
+);
+
 const Appointment = new mongoose.model("Appointment", appointmentSchema);
 module.exports = Appointment;

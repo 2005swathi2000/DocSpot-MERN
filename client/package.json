@@ -37,7 +37,7 @@
   "scripts": {
     "start": "react-scripts --openssl-legacy-provider start --env=development",
     "build": "react-scripts --openssl-legacy-provider build --env=production",
-    "test": "react-scripts test",
+    "test": "react-scripts test --watchAll=false --testMatch \"**/src/**/*.test.tsx\"",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {

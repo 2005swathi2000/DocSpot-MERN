@@ -1,4 +1,5 @@
 const catchAsync = require("../utils/catchAsync");
+const AppError = require("../utils/appError");
 const User = require("../models/userModel");
 const Appointment = require("../models/appointmentModel");
 const moment = require("moment");
@@ -43,6 +44,33 @@ exports.getUser = catchAsync(async (req, res, next) => {
 });
 
 exports.bookAppointment = catchAsync(async (req, res, next) => {
+  const { doctorId } = req.body;
+  const rawDate = req.body.date;
+  const rawTime = req.body.time;
+
+  // Prevent duplicate booking for the same doctor, date, and time slot
+  if (doctorId && rawDate && rawTime) {
+    const momentDateStr = String(moment(rawDate));
+    const momentTimeStr = String(moment(rawTime));
+    const isoDateStr = moment(rawDate).toISOString();
+    const isoTimeStr = moment(rawTime).toISOString();
+
+    const existing = await Appointment.findOne({
+      doctorId,
+      date: { $in: [rawDate, momentDateStr, isoDateStr] },
+      time: { $in: [rawTime, momentTimeStr, isoTimeStr] },
+      status: { $ne: "rejected" },
+    });
+    if (existing) {
+      return next(
+        new AppError(
+          "This appointment slot is already booked for this doctor. Please choose another time.",
+          400
+        )
+      );
+    }
+  }
+
   req.body.status = "pending";
   req.body.date = moment(req.body.date);
   req.body.time = moment(req.body.time);
@@ -50,17 +78,22 @@ exports.bookAppointment = catchAsync(async (req, res, next) => {
   const newAppointment = new Appointment(req.body);
   await newAppointment.save();
 
-  // Find doctor and send notification
-  const user = await User.findById(req.body.doctorInfo.userId);
-  user.unseenNotifications.push({
-    type: "new-appointment-request",
-    message: `A new appointment request has been made by ${req.body.userInfo.name}`,
-    data: {
-      name: req.body.userInfo.name,
-    },
-    onClickPath: "/doctor/appointments",
-  });
-  await user.save();
+  // Find doctor and send notification safely if doctor exists
+  if (req.body.doctorInfo && req.body.doctorInfo.userId) {
+    const user = await User.findById(req.body.doctorInfo.userId);
+    if (user) {
+      user.unseenNotifications = user.unseenNotifications || [];
+      user.unseenNotifications.push({
+        type: "new-appointment-request",
+        message: `A new appointment request has been made by ${req.body.userInfo?.name || "a patient"}`,
+        data: {
+          name: req.body.userInfo?.name || "Patient",
+        },
+        onClickPath: "/doctor/appointments",
+      });
+      await user.save();
+    }
+  }
 
   res.status(200).json({
     status: "success",
